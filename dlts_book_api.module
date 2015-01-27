@@ -6,6 +6,9 @@
  */
 function dlts_book_api_custom_theme() {
 
+  $arg = arg();
+
+  // no longer in use?
   if ( isset($_GET['oembed'])) {
     return 'dlts_book_oembed';
   }
@@ -14,6 +17,12 @@ function dlts_book_api_custom_theme() {
   else if ( isset($_GET['ctheme']) ) {
     return filter_xss($_GET['ctheme']);
   }
+  
+  // DLTS book theme does not have a user page design
+  else if ( $arg[0] == 'user' ) {  
+    return variable_get('admin_theme', 0);
+  }
+
 }
 
 /**
@@ -76,14 +85,14 @@ function dlts_book_api_menu() {
 
     'books/%dlts_book/edit' => array(
       'title' => 'Edit book',
-      'access arguments' => array('edit any dlts_book'),
+      'access arguments' => array('edit any dlts_book content'),
       'page callback' => 'dlts_book_api_book_edit_redirect',
       'page arguments' => array(1),
     ),
     
     'books/%/%/edit' => array(
       'title' => 'Edit book page',
-      'access arguments' => array('edit any dlts_book_page'),  
+      'access arguments' => array('edit any dlts_book_page content'),  
       'page callback' => 'dlts_book_api_book_page_edit_redirect',
       'page arguments' => array(0, 1, 2),
     ),
@@ -119,12 +128,10 @@ function dlts_book_api_menu() {
     ),
     
     'books.json' => array(
-      'title' => 'Books',
+      'title' => 'All books in JSON format',
       'access arguments' => array('request book metadata'),
       'page callback' => 'dlts_book_api_books',
       'delivery callback' => 'dlts_utilities_deliver_json',
-      'page arguments' => array(1),
-      'type' => MENU_CALLBACK,
     ),
     
     'books/%dlts_book/display' => array(
@@ -227,83 +234,58 @@ function dlts_book_load($identifier, $language = 'en') {
   }
 }
 
-function dlts_book_api_books($start = 0, $limit = 25) {
+function dlts_book_api_books($start = 0, $length = 25) {
 
   global $language;
+  
+  $request_uri = drupal_parse_url(request_uri());
+  
+  if ( isset($request_uri['query']) ) {
+    if ( isset($request_uri['query']['rows']) && is_numeric($request_uri['query']['rows']) ) {
+      $length = $request_uri['query']['rows'];
+    }
+    if ( isset($request_uri['query']['start']) && is_numeric($request_uri['query']['start']) ) {
+      $start = $request_uri['query']['start'];
+    }
+  }
+  
+  $countQuery = new EntityFieldQuery();
+  
+  $entitiesQuery = new EntityFieldQuery();  
+  
+  $count = $countQuery->entityCondition('entity_type', 'node')
+                      ->entityCondition('bundle', 'dlts_book')
+                      ->propertyCondition('status', 1)
+                      ->count()
+                      ->execute();
 
-  $books = array(
-    'books' => array()
+  $entities = $entitiesQuery->entityCondition('entity_type', 'node')
+                            ->entityCondition('bundle', 'dlts_book')
+                            ->propertyCondition('status', 1)
+                            ->range($start, $length)
+                            ->execute();
+                    
+  $keys = array_keys($entities['node']);
+  
+  $nodes = entity_load('node', $keys);
+  
+  // try to mimic Solr response
+  $response = array(
+    'response' => array(
+      'numFound' => $count,
+      'start' => $start,
+      'docs' => array()
+    )
   );
   
-  if (isset($_GET['limit']) && is_numeric($_GET['limit'])) {
-    $limit = $_GET['limit'];
+  foreach ( (array) $nodes as $node) {
+    $response['response']['docs'][] = dlts_book_api_book( $node, FALSE);
   }
   
-  $query = new EntityFieldQuery();
-
-  $entities = $query->entityCondition('entity_type', 'node')
-    ->entityCondition('bundle', 'dlts_book')
-    ->propertyCondition('status', 1);
-  
-  if ($limit != 0) {
-    $entities->range($from, $limit);
-  }
-    
-  $que = $entities->execute();  
-  
-  $nodes = entity_load('node', array_keys($que['node']));
-
-  foreach ((array) $nodes as $node) {
-    
-    $field_representative_image = dlts_utilities_field_get_first_item('node', $node, 'field_representative_image');
-
-    $field_identifier = dlts_utilities_field_get_first_item('node', $node, 'field_identifier');
-
-    $field_title = dlts_utilities_field_get_first_item('node', $node, 'field_title');
-
-    $field_sequence_count = dlts_utilities_field_get_first_item('node', $node, 'field_sequence_count');
-
-    $field_page_count = dlts_utilities_field_get_first_item('node', $node, 'field_page_count');
-
-    $field_page_count = dlts_utilities_field_get_first_item('node', $node, 'field_page_count');
-
-    $field_description = dlts_utilities_field_get_first_item('node', $node, 'field_description');
-
-    $field_editor = dlts_utilities_field_get_first_item('node', $node, 'field_editor');
-
-    $field_language = dlts_utilities_field_get_first_item('node', $node, 'field_language');
-
-    $field_number = dlts_utilities_field_get_first_item('node', $node, 'field_number');
-
-    $field_publisher = dlts_utilities_field_get_first_item('node', $node, 'field_publisher');
-
-    $field_volume = dlts_utilities_field_get_first_item('node', $node, 'field_volume');
-
-    $field_publication_date = dlts_utilities_field_get_first_item('node', $node, 'field_publication_date');
-    
-    $books['books'][] = array(
-      'title' => $field_title['safe_value'],
-      'sequences' => $field_sequence_count['value'],
-      'identifier' => $field_identifier['safe_value'],
-      'description' => $field_description['safe_value'],
-      'editors' => $field_editor['safe_value'],
-      'number' => $field_number['safe_value'],
-      'publisher' => $field_publisher['safe_value'],
-      'date' => format_date($field_publication_date['value'], 'medium', 'm, Y'),
-      'volume' => $field_volume['safe_value'],
-      'count' => $field_page_count['value'],    
-      'language' => $field_language['safe_value'],
-      'thumbnail' => array(
-        'image' => image_style_url('medium', $field_representative_image['uri']),
-        'width' => 220,
-        'height' => 165
-      ),
-    );
-  }
-  
-  return $books;
+  return $response;
 
 }
+
 
 /**
  * Generate metadata about the first five pages in a DLTS Book.
@@ -536,13 +518,16 @@ function dlts_book_api_embed_response( $dlts_book, $pre_response = array() ) {
   return $response;
 }
 
-function dlts_book_api_book($book) {
+function dlts_book_api_book( $node, $listPages = TRUE) {
 
-  $metadata = dlts_book_api_book_metadata($book);
+  $book = dlts_book_api_book_metadata( $node );
   
-  $pages = dlts_book_api_book_pages($book);
+  if ( $listPages ) {
   
-  return array_merge((array) $metadata, (array) $pages);
+    $book =  array_merge( (array) $book, (array) dlts_book_api_book_pages( $node ) ) ;
+    
+  }
+  return $book;
   
 }
 
@@ -554,20 +539,17 @@ function dlts_book_api_book($book) {
  * @return
  * A keyed array to be converted into JSON
  *
- * @todo
- * Rather than hardcoding everything, I suspect it would be better to define a
- * build mode for book metadata and theming it. This is complicated by the
- * fact that many of the keys in the $response, below, don't correlate exactly
- * to Drupal field names. e.g. 'field_creator' versus 'author'
  */
 function dlts_book_api_book_metadata($book) {
 
   module_load_include('inc', 'dlts_utilities', 'inc/dlts_utilities.book');
-
   module_load_include('inc', 'dlts_utilities', 'inc/dlts_utilities.book_page');
-  
   module_load_include('inc', 'dlts_utilities', 'inc/dlts_utilities.collection');  
-
+  
+  $type = dlts_utilities_content_types_type( $book->type );
+  
+  $fields = array();
+  
   if (!is_object($book)) {
     return array(
       'argument' => $book,
@@ -576,91 +558,82 @@ function dlts_book_api_book_metadata($book) {
       'status' =>t('fail'),
     );
   }
+  
+  $metadata = $subjects = $collections = array();
 
   $base_url = url('', array('absolute' => TRUE));
 
-  $metadata = $subjects = $collections = array();
-
   $ewrapper = entity_metadata_wrapper('node', $book);
-
-  $handle = $ewrapper->field_handle->value();
-
-  $other_version = $ewrapper->field_other_version->value();
-
-  $representative_image = $ewrapper->field_representative_image->value();
-
-  $field_subject = $ewrapper->field_subject->value();
   
-  $identifier = dlts_utilities_book_page_get_identifier($book);
+  foreach ( $type['fields'] as $field ) {
   
-  foreach ($field_subject as $subject) {
-    $subjects[] = $subject->name;
-  }
-  
-  $field_collection = $ewrapper->field_collection->value();
-  
-  foreach ($field_collection as $collection) {
+    $name = str_replace('field_', '', $field['field_name']);
+
+    $raw_value = $ewrapper->$field['field_name']->value();
     
-    $node = node_load($collection->nid);
-    
-    if (isset($node) && isset($node->nid)) {
-      $collections[] = dlts_utilities_collection_get_identifier($node);
+    if ( $field['type'] == 'options_buttons' ) {
+      $value = $field['settings']['allowed_values'][$raw_value];
     }
     
+    else if ( $field['type'] == 'link_field' && isset( $raw_value['url'] ) ) {
+    
+      $value = $raw_value['url'];
+    
+    }    
+    
+    else if ( $field['type'] == 'file_generic' ) {
+    
+      $value = array();
+    
+      foreach ( (array) $raw_value as $pdf_file) {
+        $value[] = file_create_url($pdf_file['uri']);
+      }  
+      
+    } 
+    
+    else if ( $field['type'] == 'date_text' ) {
+      $raw_value['value'];
+    }        
+    
+    else if ( $field['type'] == 'image_image' ) {
+      $value = file_create_url($raw_value['uri']);
+    }        
+    
+    else if ( $field['type'] == 'taxonomy_autocomplete' ) {
+      
+      $value = array();
+      
+      foreach ($raw_value as $taxonomy) {
+        $value[] = $taxonomy->name;
+      }
+      
+    }
+    
+    else {
+      $value = $raw_value;
+    }
+    
+    $fields[$name] = array ( 
+      'label' => $field['label'], 
+      'value' => (array) $value, 
+      // 'raw_value' => $raw_value,       
+      // 'type' => $field['type'], 
+      // 'machine_name' => $field['field_name'], 
+    );
+
   }
   
-  $field_pdf_files = $ewrapper->field_pdf_file->value();
-
-  foreach ( (array) $field_pdf_files as $pdf_file) {
-    $pdf_files[] = file_create_url($pdf_file['uri']);
-  }  
-
-  $metadata = array(
-    'isPartOf' => array( 'collection' => $collections ),
-    'subjects' => array( 'subject' => $subjects),    
-    'representative_image' => file_create_url($representative_image['uri']),
-    'authors' => array ( 'autor' => $ewrapper->field_author->value() ),
-    'contributors' => array ( 'contributor' => $ewrapper->field_contributor->value() ),
-    'creators' => array ( 'creator' => $ewrapper->field_creator->value() ),
-    'editor' => array ( 'editor' => $ewrapper->field_editor->value() ),
-    'publisher' => array ( 'publisher' => $ewrapper->field_publisher->value() ),
-    'other_version' => $other_version[0]['url'],
-    'handle' => $handle['url'],
-    'binding_orientation' => $ewrapper->field_binding_orientation->value(),
-    'call_number' => $ewrapper->field_call_number->value(),
-    'description' => $ewrapper->field_description->value(),
-    'dimensions' => $ewrapper->field_dimensions->value(),
-    'identifier' => $ewrapper->field_identifier->value(),
-    'isbn' => $ewrapper->field_isbn->value(),
-    'language' => $ewrapper->field_language->value(),
-    'language_code' => $ewrapper->field_language_code->value(),
-    'number' => $ewrapper->field_number->value(),
-    'ocr_text' => $ewrapper->field_ocr_text->value(),
-    'page_count' => $ewrapper->field_page_count->value(),
-    'pdf_files' => array ( 'pdf_file' => $pdf_files ),
-    'publication_date' => $ewrapper->field_publication_date->value(),
-    'publication_date_text' => $ewrapper->field_publication_date_text->value(),
-    'publication_location' => $ewrapper->field_publication_location->value(),
-    'read_order' => $ewrapper->field_read_order->value(),
-    'rights' => $ewrapper->field_rights->value(),
-    'scan_date' => $ewrapper->field_scan_date->value(),
-    'scan_order' => $ewrapper->field_scan_order->value(),
-    'scanning_notes' => $ewrapper->field_scanning_notes->value(),
-    'sequence_count' => $ewrapper->field_sequence_count->value(),
-    'subtitle' => $ewrapper->field_subtitle->value(),
-    'title_long' => $ewrapper->field_title->value(),
-    'topic' => $ewrapper->field_topic->value(),
-    'volume' => $ewrapper->field_volume->value(),
-  );
+  $identifier = $fields['identifier']['value'][0];
 
   return array(
-    'title' => !empty($title) ? $title : $book->title,
+    'entity_title' => !empty($title) ? $title : $book->title,
     'identifier' => $identifier,
-    'book_path' => url('books/' . $identifier . '/1', array('absolute' => TRUE)),
+    'entity_path' => url('books/' . $identifier . '/1', array('absolute' => TRUE)),
     'base_url' => $base_url,
-    'language' => $book->language,
-    'status' => $book->status,
-    'metadata' => $metadata,
+    'entity_language' => $book->language,
+    'entity_status' => $book->status,
+    'entity_type' => $book->type,    
+    'metadata' => $fields,
   );
 
 }
@@ -818,8 +791,20 @@ function dlts_book_api_oembed_lookup() {
   return $response;
 }
 
-function dlts_book_api_book_edit_redirect($arg1) {
-  drupal_goto('node/' . $arg1->nid . '/edit');
+function dlts_book_api_book_edit_redirect( $arg ) {
+
+  if ( is_object ( $arg ) && isset ( $arg->type ) && $arg->type == 'dlts_book' ) { 
+    if ( $identifier = dlts_utilities_book_get_identifier( $arg ) ) $path = drupal_lookup_path( 'source', 'books/' . $identifier );
+  }
+  
+  else {
+    $path = drupal_lookup_path('source', 'books/' . $arg);  
+  }
+  
+  if ( !$path ) drupal_not_found();
+  
+  else drupal_goto($path . '/edit');
+  
 }
 
 function dlts_book_api_book_page_edit_redirect($arg1, $arg2, $arg3) {
