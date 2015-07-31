@@ -298,6 +298,9 @@ function dlts_book_api_books($start = 0, $length = 25) {
 function dlts_book_api_book_pages($book, $start = 0, $length = 25) {
 
   global $language;
+  
+  module_load_include('inc', 'dlts_utilities', 'inc/dlts_utilities.book');
+  module_load_include('inc', 'dlts_utilities', 'inc/dlts_utilities.book_page');
 
   $pages = array(
     'pages' => array( 'page' => array() )
@@ -351,17 +354,17 @@ function dlts_book_api_book_pages($book, $start = 0, $length = 25) {
       'image' => $master['full_path'],
     	'uri' => $master['uri'],
     	'timestamp' => $master['timestamp'],
-      'service' => dlts_utilities_book_page_get_services_image_fullpath($node),
-      'hand_side' => dlts_utilities_book_page_get_hand_side($node),
-      'read_order' => dlts_utilities_book_page_get_read_order($node),
-      'page_type' => dlts_utilities_book_page_get_page_type($node),
-      'visible' => dlts_utilities_book_page_get_visible($node),
-      'metadata' => array(
-        'width' => (isset($master['djakota_width']) ? $master['djakota_width'] : NULL ),
-        'height' => (isset($master['djakota_height']) ? $master['djakota_height'] : NULL ),
-        'levels' => (isset($master['djakota_levels']) ? $master['djakota_levels'] : NULL ),
-        'dwtLevels' => (isset($master['djakota_dwtLevels']) ? $master['djakota_dwtLevels'] : NULL ),
-        'compositingLayerCount' => (isset($master['djakota_compositingLayerCount']) ? $master['djakota_compositingLayerCount'] : NULL ),
+        'service' => dlts_utilities_book_page_get_services_image_fullpath($node),
+        'hand_side' => dlts_utilities_book_page_get_hand_side($node),
+        'read_order' => dlts_utilities_book_page_get_read_order($node),
+        'page_type' => dlts_utilities_book_page_get_page_type($node),
+        'visible' => dlts_utilities_book_page_get_visible($node),
+        'metadata' => array(
+          'width' => (isset($master['djakota_width']) ? $master['djakota_width'] : NULL ),
+          'height' => (isset($master['djakota_height']) ? $master['djakota_height'] : NULL ),
+          'levels' => (isset($master['djakota_levels']) ? $master['djakota_levels'] : NULL ),
+          'dwtLevels' => (isset($master['djakota_dwtLevels']) ? $master['djakota_dwtLevels'] : NULL ),
+          'compositingLayerCount' => (isset($master['djakota_compositingLayerCount']) ? $master['djakota_compositingLayerCount'] : NULL ),
       ),
 
     );
@@ -795,6 +798,7 @@ function dlts_book_api_oembed_lookup() {
 function dlts_book_api_book_edit_redirect( $arg ) {
 
   if ( is_object ( $arg ) && isset ( $arg->type ) && $arg->type == 'dlts_book' ) {
+    module_load_include('inc', 'dlts_utilities', 'inc/dlts_utilities.book');
     if ( $identifier = dlts_utilities_book_get_identifier( $arg ) ) $path = drupal_lookup_path( 'source', 'books/' . $identifier );
   }
 
